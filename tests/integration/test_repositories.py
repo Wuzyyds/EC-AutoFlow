@@ -427,7 +427,7 @@ class TestAsyncParity:
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
         async def run() -> tuple[int, int]:
-            from core.db import async_session_scope
+            from core.db import async_session_scope, dispose_engines
             from core.models import Role as R
 
             async with async_session_scope() as s:
@@ -447,7 +447,10 @@ class TestAsyncParity:
                 repo2 = RoleRepository(s, tenant_id=t2.id)
                 counts = (await repo1.count(), await repo2.count())
                 await s.rollback()
-                return counts
+
+            # 在循环还活着时释放连接池，避免关闭后的资源清理异常
+            await dispose_engines()
+            return counts
 
         c1, c2 = asyncio.run(run())
         assert c1 == 1
