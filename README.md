@@ -4,6 +4,36 @@ AI 全链路电商自动化平台 —— 覆盖选品、上架、素材、客服
 
 ---
 
+## 功能模块
+
+| 模块 | 职责 |
+|---|---|
+| 选品 | 市场与竞品数据分析，输出选品评分与建议 |
+| 上架 | 商品信息生成、批量刊登、上架状态跟踪 |
+| 素材 | 商品图片与视频素材的生成与管理 |
+| 客服售后 | 消息处理、退款与售后工单流转 |
+| 财务核算 | 订单经营、履约贡献、结算对账、会计四类报表 |
+| 平台对接 | 各平台 API 适配、凭据管理、限流与重试 |
+| 报表 | 经营指标汇总、归因分析、关账 |
+| 竞品监控 | 竞品价格与动态采集、预警 |
+
+---
+
+## 技术栈
+
+| 层 | 选型 |
+|---|---|
+| 语言 | Python 3.12+ |
+| Web 框架 | FastAPI |
+| ORM | SQLAlchemy 2.0 |
+| 数据库 | MySQL 8.0.16+ |
+| 迁移 | Alembic |
+| 队列与缓存 | Celery + Redis 7.x |
+| 前端 | Vue 3 + Element Plus |
+| 部署 | Docker Compose |
+
+---
+
 ## 当前状态
 
 **Phase 1 开发中（骨架阶段）**。基础设施、数据模型、核心契约与状态机已完成，业务编排与入口层待实现。
@@ -50,25 +80,27 @@ python -m venv .venv
 cp .env.example .env
 # 按需修改 .env 中的数据库连接与密钥
 
-# 3. 初始化数据库
-python ops/db_init.py
+# 3. 创建数据库（字符集必须 utf8mb4）
+mysql -u root -p -e "CREATE DATABASE ec_autoflow CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
 
-# 4. 执行迁移
+# 4. 执行迁移（建表）
 python -m alembic upgrade head
 
 # 5. 生成约束（CHECK 或触发器，按 MySQL 版本自适应）
 python ops/generate_constraints.py --apply
 
-# 6. 写入种子数据
-python ops/seed.py
+# 6. 环境自检（连通性、字符集、表结构、Redis）
+python ops/healthcheck.py
 ```
 
 ### 运行
 
+> 入口层（`apps/`）尚未实现，以下命令待对应模块完成后可用。
+
 ```bash
-python -m uvicorn apps.api.main:app --reload    # API 服务
+python -m uvicorn apps.api.main:app --reload                # API 服务
 python -m celery -A apps.worker.celery_app worker -l info   # 任务 worker
-python -m pytest                                 # 测试
+python -m pytest                                            # 测试
 ```
 
 ### 使用 Makefile（需安装 make）
@@ -217,6 +249,19 @@ python -m alembic downgrade -1                        # 回滚一步
 ## 版本控制与回滚
 
 本仓库为**私有仓库**，用于单人开发的版本管理与故障回滚。
+
+### 推送门禁
+
+代码**不随改随推**。每次推送前必须依次通过四道检查：
+
+| 顺序 | 检查项 | 通过标准 |
+|---|---|---|
+| 1 | 功能完成 | 该功能可运行、自测通过 |
+| 2 | 测试通过 | `python -m pytest` 全绿 |
+| 3 | 代码审核 | 依赖方向未越界、枚举未硬编码、命名符合规范 |
+| 4 | 安全审核 | 无凭据硬编码、无 PII 泄漏、日志已脱敏 |
+
+四项齐备后才执行 `git push`。与功能无关的文件（本地配置、缓存、临时产物）一律不入库。
 
 ### 提交信息约定
 
