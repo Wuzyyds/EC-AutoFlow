@@ -1,0 +1,34 @@
+# ============================================================
+# EC-AutoFlow .gitattributes
+# 统一换行符，避免 Windows / Linux 协作时产生无意义的 diff 噪音
+# ============================================================
+
+# 默认：文本文件按 LF 入库，检出时由 git 自动决定
+* text=auto eol=lf
+
+# Windows 专用脚本必须保留 CRLF，否则 cmd / PowerShell 解析异常
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# 二进制文件禁止换行符转换
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.xlsx binary
+*.zip  binary
+
+# 语言与工具识别
+*.py   text diff=python
+*.md   text diff=markdown
+*.sql  text
+*.ini  text
+*.toml text
+*.yml  text
+*.yaml text
+
+# 迁移文件按生成顺序排布，diff 噪音大，折叠显示
+migrations/versions/*.py -diff

@@ -1,0 +1,70 @@
+# EC-AutoFlow 本地开发环境
+#
+# 设计要点：
+# 1. MySQL 用 3307 端口，避开宿主机已有的 3306 实例，互不干扰
+# 2. 强制 default-time-zone=+00:00 —— 全系统统一 UTC（TDD-01 原则 4）
+# 3. 强制 sql_mode 严格模式 —— 拒绝隐式截断与非法日期
+# 4. MySQL 8.0（>= 8.0.16）—— 低于该版本 CHECK 约束不强制执行，等于没有约束
+#
+# 启动：make up
+# 销毁（含数据）：make down-hard
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ec-autoflow-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ec_autoflow}
+      MYSQL_USER: ${MYSQL_USER:-ecflow}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ecflow_dev_pwd}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+      - --sql-mode=STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION
+      - --max_connections=200
+      - --innodb-buffer-pool-size=512M
+      # 事件调度器：PII 定期清理、分区维护依赖它（Phase 2 启用）
+      - --event-scheduler=ON
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./ops/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: ec-autoflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mysql_data:
+    name: ec-autoflow-mysql-data
+  redis_data:
+    name: ec-autoflow-redis-data

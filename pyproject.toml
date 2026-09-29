@@ -1,0 +1,155 @@
+[project]
+name = "ec-autoflow"
+version = "0.1.0"
+description = "AI 全链路电商自动化平台（EC-AutoFlow）"
+readme = "README.md"
+requires-python = ">=3.12"
+
+# 依赖版本锁定理由见 docs/TDD-01-技术设计总纲.md §2.1
+# 数据库驱动已按 ADR-007 从 asyncpg 变更为 aiomysql + pymysql
+dependencies = [
+    "fastapi>=0.115,<0.116",
+    "uvicorn[standard]>=0.32,<0.33",
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.5,<3",
+    "sqlalchemy[asyncio]>=2.0,<2.1",
+    "alembic>=1.13,<2",
+    # --- 数据库驱动（ADR-007）---
+    # aiomysql 用于 API 层异步；pymysql 用于 Celery worker 同步
+    # 选 aiomysql 而非 asyncmy：纯 Python，Windows 免编译
+    "aiomysql>=0.2,<0.3",
+    "pymysql>=1.1,<2",
+    # --- 任务与缓存 ---
+    "celery[redis]>=5.4,<6",
+    "redis>=5.0,<6",
+    # --- 外部调用 ---
+    "httpx>=0.27,<0.28",
+    "tenacity>=9.0,<10",
+    # --- 可观测 ---
+    "structlog>=24.1",
+    # --- 安全与文件 ---
+    "cryptography>=43",
+    "openpyxl>=3.1",
+    "pillow>=10.4",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.7",
+    "mypy>=1.11",
+    "faker>=30",
+    # 时间可注入（TDD-06 §1.4 硬性要求）：
+    # 审批超时、可售天数、关账逻辑全部依赖时间，
+    # 用真实时间就无法测试"31 天后超时"
+    "freezegun>=1.5",
+    "types-pymysql",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["core", "domain", "adapters", "repositories", "services", "integrations"]
+
+# ============================================================
+# Ruff：lint + format（替代 black + isort + flake8）
+# ============================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+exclude = ["migrations/versions", ".venv", "node_modules"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports
+    "RUF",  # ruff 自有规则
+]
+ignore = [
+    "E501",  # 行长由 formatter 处理
+    "B008",  # FastAPI 的 Depends() 默认参数是惯用法
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 迁移脚本由 alembic 自动生成，不强制风格
+"migrations/versions/*" = ["E501", "I001"]
+# 测试允许使用 assert 与魔法值
+"tests/**" = ["S101", "PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "domain", "adapters", "repositories", "services", "integrations", "apps"]
+
+# ============================================================
+# mypy：strict 模式（TDD-01 §2.1）
+# ============================================================
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+plugins = ["pydantic.mypy"]
+
+# 关键约束：domain 层保持框架无关（TDD-01 §3.2）
+# 不得 import sqlalchemy / httpx / fastapi
+[[tool.mypy.overrides]]
+module = "domain.*"
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "migrations.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "aiomysql.*", "pymysql.*", "freezegun.*"]
+ignore_missing_imports = true
+
+# ============================================================
+# pytest
+# ============================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-q",
+    "--strict-markers",
+    "--tb=short",
+]
+markers = [
+    "unit: 单元测试（无 IO，必须极快）",
+    "integration: 集成测试（需要 MySQL / Redis）",
+    "contract: 适配器契约测试",
+    "e2e: 端到端测试（Mock 驱动）",
+    "slow: 慢测试",
+]
+filterwarnings = [
+    "error",                       # 警告视为错误
+    "ignore::DeprecationWarning:celery.*",
+]
+
+[tool.coverage.run]
+source = ["core", "domain", "adapters", "repositories", "services"]
+branch = true
+omit = ["*/tests/*", "*/migrations/*"]
+
+[tool.coverage.report]
+# 分层覆盖率要求见 TDD-06 §1.2
+fail_under = 80
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
